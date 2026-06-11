@@ -118,22 +118,38 @@ if __name__ == '__main__':
     # 5. Training
     print("Memulai proses training di Lokal GPU (RTX 2050)...")
     model.train(
-        data        = yaml_path,
-        resume      = True,
-        batch       = 4,      # Aman untuk VRAM 4 GB
-        workers     = 2,      # Windows butuh workers rendah
-        lr0         = 0.001,  # LR awal; adaptive callback akan mengecilkan jika stuck
-        lrf         = 0.01,   # LR akhir = lr0 * lrf (setelah seluruh epoch selesai)
+        data          = yaml_path,
+        resume        = True,
+        epochs        = 220,   # Lanjut sampai epoch 220 (sebelumnya berhenti di 170)
+        batch         = 4,     # Aman untuk VRAM 4 GB
+        workers       = 2,     # Windows butuh workers rendah
+        lr0           = 0.001,
+        lrf           = 0.01,
         warmup_epochs = 3,
-        cos_lr      = True,   # Cosine decay sebagai base schedule
-        patience    = 50,     # Early stopping jika 50 epoch tanpa improvement
-        save_period = 10,     # Simpan checkpoint tiap 10 epoch
-        verbose     = True,
+        cos_lr        = True,
+        patience      = 50,
+        save_period   = 10,
+        verbose       = True,
     )
 
     # 6. Evaluasi akhir
     print("Memulai evaluasi akhir untuk melihat nilai mAP total...")
-    metrics = model.val(batch=2, workers=0)
-    print(f"Hasil Akhir mAP50   : {metrics.box.map50:.4f}")
-    print(f"Hasil Akhir mAP50-95: {metrics.box.map:.4f}")
-    print("Training Selesai!")
+    best_pt = CHECKPOINT.replace('last.pt', 'best.pt')
+    model_best = YOLO(best_pt)
+    metrics = model_best.val(batch=2, workers=0)
+
+    print(f"\n{'='*50}")
+    print(f"  mAP50    : {metrics.box.map50:.4f}")
+    print(f"  mAP50-95 : {metrics.box.map:.4f}")
+    print(f"  Precision: {metrics.box.mp:.4f}")
+    print(f"  Recall   : {metrics.box.mr:.4f}")
+    print(f"{'='*50}")
+
+    print("\nPer-class results:")
+    class_names = config['names']
+    for i, name in enumerate(class_names):
+        ap50 = metrics.box.ap50[i] if i < len(metrics.box.ap50) else 0
+        ap   = metrics.box.ap[i]   if i < len(metrics.box.ap)   else 0
+        print(f"  {name:22s}: mAP50={ap50:.4f}  mAP50-95={ap:.4f}")
+
+    print("\nTraining Selesai!")
