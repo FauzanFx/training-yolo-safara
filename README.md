@@ -59,4 +59,4 @@ Server akan mendengarkan request pada topik `safara/gate/request` dan mengirim r
 - **Logging & Error Handling**: Implementasi logging standar untuk memudahkan debugging.
 
 ## Lisensi
-[Pilih Lisensi Anda]
+Proyek ini dilisensikan di bawah [MIT License](LICENSE).
