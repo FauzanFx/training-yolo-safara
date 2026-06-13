@@ -1,6 +1,34 @@
-dataset_glasses/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# YOLO / Ultralytics
 runs/
+*.pt
+!yolo11n.pt
+!yolo26n.pt
+!models/*.pt
+
+# Dataset
+dataset_glasses/
 safara-computer-vision/
-safara-object-detection-4/
-dataset_glasses.zip
-dataset-mask.zip
+safara-object-detection-*/
+*.zip
+*.tar.gz
+
+# IDEs
+.vscode/
+.idea/
+.claude/
+
+# Logs
+*.log
+traininglogs.txt

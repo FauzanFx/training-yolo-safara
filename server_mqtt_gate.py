@@ -1,48 +1,60 @@
 import os
 import json
+import logging
 import paho.mqtt.client as mqtt
+from dotenv import load_dotenv
 
-# ==================== KONFIGURASI MQTT ====================
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-TOPIC_REQUEST = "safara/gate/request"
-TOPIC_RESPONSE = "safara/gate/response"
+# Load environment variables
+load_dotenv()
 
-# File database eksternal
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-JSON_DB_FILE = os.path.join(BASE_DIR, "whitelist.json")
+# ==================== KONFIGURASI ====================
+MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
+TOPIC_REQUEST = os.getenv("TOPIC_REQUEST", "safara/gate/request")
+TOPIC_RESPONSE = os.getenv("TOPIC_RESPONSE", "safara/gate/response")
+JSON_DB_FILE = os.getenv("WHITELIST_FILE", "whitelist.json")
+
+# Setup Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # ============================================================
 
 def load_whitelist():
     """Fungsi untuk membaca data whitelist dari file JSON secara realtime"""
     if not os.path.exists(JSON_DB_FILE):
-        print(f"[!] Warning: File {JSON_DB_FILE} tidak ditemukan. Membuat file kosong baru.")
-        # Buat file baru kalau belum ada
-        with open(JSON_DB_FILE, 'w') as f:
-            json.dump({}, f)
-        return {}
+        logger.warning(f"File {JSON_DB_FILE} tidak ditemukan. Membuat file kosong baru.")
+        try:
+            with open(JSON_DB_FILE, 'w') as f:
+                json.dump({}, f)
+            return {}
+        except Exception as e:
+            logger.error(f"Gagal membuat file whitelist: {e}")
+            return {}
     
     try:
         with open(JSON_DB_FILE, 'r') as f:
             return json.load(f)
     except Exception as e:
-        print(f"[!] Gagal membaca file JSON: {e}")
+        logger.error(f"Gagal membaca file JSON: {e}")
         return {}
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("[+] Python Server sukses terhubung ke Mosquitto Broker!")
+        logger.info("Python Server sukses terhubung ke Mosquitto Broker!")
         client.subscribe(TOPIC_REQUEST)
-        print(f"[*] Menunggu ketukan data RFID pada topik: '{TOPIC_REQUEST}'...\n")
+        logger.info(f"Menunggu ketukan data RFID pada topik: '{TOPIC_REQUEST}'...")
     else:
-        print(f"[!] Gagal terhubung ke broker, return code: {rc}")
+        logger.error(f"Gagal terhubung ke broker, return code: {rc}")
 
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
         uid_terbaca = payload.get("uid", "").lower().strip()
-        print(f"[*] Menerima permintaan validasi untuk UID: [{uid_terbaca}]")
+        logger.info(f"Menerima permintaan validasi untuk UID: [{uid_terbaca}]")
         
         # BACA DATABASE JSON (Realtime / Modular)
         valid_tags = load_whitelist()
@@ -55,28 +67,40 @@ def on_message(client, userdata, msg):
                 "user": nama_pekerja, 
                 "message": "Akses Diberikan"
             }
-            print(f"[+++] AKSES DIBERIKAN: {nama_pekerja}")
+            logger.info(f"AKSES DIBERIKAN: {nama_pekerja}")
         else:
             response_data = {
                 "status": "denied", 
                 "message": "Akses Ditolak"
             }
-            print(f"[---] AKSES DITOLAK: UID tidak terdaftar.")
+            logger.info("AKSES DITOLAK: UID tidak terdaftar.")
             
         # Kirim balik keputusan akses (Publish) ke ESP32
         client.publish(TOPIC_RESPONSE, json.dumps(response_data))
-        print(f"[*] Respon balik berhasil di-publish ke topik: '{TOPIC_RESPONSE}'\n")
+        logger.debug(f"Respon balik berhasil di-publish ke topik: '{TOPIC_RESPONSE}'")
         
+    except json.JSONDecodeError:
+        logger.error(f"Gagal mendecode JSON dari payload: {msg.payload}")
     except Exception as e:
-        print(f"[!] Gagal memproses pesan MQTT: {e}")
+        logger.error(f"Gagal memproses pesan MQTT: {e}")
 
-# Inisialisasi Klien MQTT
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_message = on_message
+def main():
+    # Inisialisasi Klien MQTT
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
 
-# Hubungkan ke Mosquitto local
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    try:
+        # Hubungkan ke Mosquitto
+        logger.info(f"Menghubungkan ke broker {MQTT_BROKER}:{MQTT_PORT}...")
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        
+        # Jaga agar script Python terus berjalan mendengarkan data tanpa henti
+        client.loop_forever()
+    except KeyboardInterrupt:
+        logger.info("Server dihentikan oleh pengguna.")
+    except Exception as e:
+        logger.error(f"Terjadi kesalahan pada server: {e}")
 
-# Jaga agar script Python terus berjalan mendengarkan data tanpa henti
-client.loop_forever()
+if __name__ == '__main__':
+    main()
